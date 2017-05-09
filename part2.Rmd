@@ -1,0 +1,172 @@
+---
+title: "Analysis of the ToothGrowth dataset"
+author: "Michal Siwek"
+output: 
+  pdf_document:
+    fig_width: 6
+    fig_height: 3
+---
+
+# Overview
+
+This is part 2 of the Project Assignement for Statistical Inference course by JHU at Coursera.
+It analyzes the ToothGrowth data in the R datasets package. In particular it shows:
+
+* basic data explorations
+* basic summary of data
+* comparison of tooth growth by supp and dose using t-tests
+* assumptions needed for performing the t-tests
+
+# Exploratory Data Analysis and basic summaries of the data
+
+Let's have a quick view of the data:
+```{r}
+head(ToothGrowth)
+str(ToothGrowth)
+summary(ToothGrowth)
+hist(ToothGrowth$len)
+```
+
+Some exploratory plots:
+```{r}
+boxplot(tapply(ToothGrowth$len, ToothGrowth$dose, as.vector))
+plot(ToothGrowth$supp, ToothGrowth$len)
+```
+
+Let's take a look at the exploratory plot offered for the ToothGrowth dataset in the help page of the dataset package.
+```{r, fig.height=4}
+require(graphics)
+coplot(len ~ dose | supp, data = ToothGrowth, panel = panel.smooth,
+       xlab = "ToothGrowth data: length vs dose, given type of supplement")
+```
+
+All these plots give a general suggestion that:
+* the dose size has a positive impact on the tooth length
+* orange juice gives higher tooth growth than ascorbid acid
+
+# Comparing Tooth Growth by Supp and Dose
+
+Comparison will be made using both **95% t confidence intervals** and **hypotheses tests at $\alpha=.05$**. I will show the calculations for supp in more detail, but I will skip most details for Dose, as the calculations run along the same lines in both cases.
+
+## Comparing by Supp
+
+Calculating auxiliary variables.
+```{r}
+g1 <- ToothGrowth[ToothGrowth$supp=='OJ',]$len
+g2 <- ToothGrowth[ToothGrowth$supp=='VC',]$len
+n1 <- length(g1); n2 <- length(g2)
+s1 <- var(g1); s2 <- var(g2)
+```
+
+### Using Confidence Intervals
+
+Let's first assume **paired observations**. The confidence interval is:
+```{r}
+diff <- g1-g2
+mn <- mean(diff); s <- sd(diff)
+mn + c(-1,1)*qt(.975,n1-1)*s/sqrt(n1)
+```
+
+The same can be achived using t.test function:
+```{r}
+t.test(diff)$conf.int
+```
+
+We see that **orange juce has a significantly more positive impact on the tooth growth**,
+as the interval is entirely above 0.
+
+Now let's assume **independent groups with equal variance**. The confidence interval is:
+```{r}
+mn <- mean(g1) - mean(g2)
+pooled_var = ((n1-1)*s1 + (n2-1)*s2)/(n1+n2-2)
+mn + c(-1,1)*qt(.975,n1+n2-2)*sqrt(pooled_var * (1/n1+1/n2))
+```
+
+The same can be achived using t.test function:
+```{r}
+t.test(g1, g2, paired=F, var.equal=T)$conf.int
+```
+
+We could also asssume **independent groups with unequal variance**:
+```{r}
+t.test(g1, g2, paired=F, var.equal=F)$conf.int
+```
+
+In both cases of independent group tests there is **no significant difference** between the groups.
+
+### Using Hypotheses Tests
+
+Let's reframe the problem in terms of hypotheses testing. Let's first assume **paired observations**. Test settings are:
+
+* $H_0: diff = 0$
+* $H-a: diff \neq 0$
+* $\alpha = .05$
+
+Critical value for two sided test:
+```{r}
+qt(0.975, n1-1)
+```
+
+Test statistic $TS = \frac{\bar{X} - \mu_0}{S / \sqrt{n}}$:
+```{r}
+(mn - 0) / (s/sqrt(n1))
+```
+
+so we **reject $H_0$** as the test statistic is greater than the critical value.
+
+The same using t.test function:
+```{r}
+t.test(diff)
+```
+
+Now let's assume **independent groups with equal or unequal variance**. The test settings are:
+
+* $H_0: mn1 = mn2$
+* $H_a: mn1 \neq mn2$
+* $\alpha = .05$
+
+Assuming **equal variance**:
+```{r}
+t.test(g1, g2, paired=F, var.equal=T)
+```
+
+Assuming **unequal variance**:
+```{r}
+t.test(g1, g2, paired=F, var.equal=F)
+```
+
+I both cases of independent group tests we **can't reject $H_0$** as the p-values are above $.05$.
+
+## Comparing by Dose
+
+Comparing tooth length by dose runs along the same lines. Here I perform the tests only for paired observations. I compare each pair of doses, deducting sample means of bigger doses from those of smaller doses.
+
+```{r}
+doses <- combn(c(.5,1,2),2)
+for(i in seq_len(ncol(doses))) {
+    data <- subset(ToothGrowth, dose==doses[1,i])$len -
+        subset(ToothGrowth, dose==doses[2,i])$len
+    cat(">>>>> H0: dose of", doses[1,i], "vs. dose of", doses[2,i])
+    print(t.test(data))}
+```
+
+We see that in each case that:
+
+* the 95% t confidence intervals are entirely below $0$
+* estimated means of differences are below $0$ with p-values below $.5$
+
+so we conclude that **the bigger the dose of a supplement, the higher the tooth growth**.
+
+# Conclusions and Assumptions
+
+**Conclusions**:
+
+* the dose size has a positive impact on the tooth length
+* orange juice gives higher tooth growth than ascorbid acid
+
+**Assumptions** required to hold for these conclusions:
+
+* the sample of guinea pigs is a proper **random draw** (no confounding factors)
+* the **observations are paired** - i.e. the same 10 guinea pigs were treated with every possible comination of supplement and dose
+* **the order of pigs is preserved** in the data, i.e. the i-th row pig is the same pig under each treatment
+* t-statistic assumes that **the underlying population have a normal distribution**, we should assume that it is close to normal (at least symmetric and mound shaped)
